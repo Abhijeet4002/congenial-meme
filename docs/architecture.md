@@ -30,20 +30,32 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 Record your plan here before editing code.
 
-- Presentation tier decision:
-- Logic tier decision:
-- Data tier decision:
-- Activity tracking approach:
-- Team management approach:
-- Leaderboard approach:
-- Workout suggestions approach:
+- **Presentation tier decision**: React 19 components fetch from `/api/*` routes. Vite proxies to localhost:8000. Components render activity feeds and leaderboard tables with Bootstrap styling.
+- **Logic tier decision**: Express routes handle validation (return 400/404 for invalid input, never 500 from cast errors). Services compute derived data (e.g., leaderboard rankings, suggestion reasons). Mongoose handles schema validation.
+- **Data tier decision**: Mongoose models with strict validation. User requires name, email, fitnessGoal. Team requires name, mascot, members array. Activity requires type, user ref, team ref, minutes; computes points and occurredAt. Workout defines suggestion templates with focus, title, minutes, difficulty.
+- **Activity tracking approach**: POST /api/activities validates both userId and teamId as valid ObjectIds, looks them up, rejects with 400 if invalid, computes points based on type (cardio=5pt/min, strength=4pt/min), stores occurredAt as now().
+- **Team management approach**: POST /api/teams requires name, rejects with 400 if missing, accepts mascot and optional members array, returns 201 on creation.
+- **Leaderboard approach**: GET /api/leaderboard queries all teams, sums their activities' points, sorts descending, adds 1-based rank, returns in { leaderboard: [...] } format.
+- **Workout suggestions approach**: GET /api/workouts/suggestions/:userEmail finds user by email (404 if not found), analyzes recent activity types, recommends matching workout with focus and reason explaining the recommendation logic.
 
 ## Test plan
 
 Record the commands you run and what each failure means.
 
-- Data-tier command: `npm run test:data --prefix octofit-tracker/backend`
-- API command: `npm run test:api --prefix octofit-tracker/backend`
-- Frontend command: `npm test --prefix octofit-tracker/frontend`
-- Backend build command: `npm run build --prefix octofit-tracker/backend`
-- Frontend build command: `npm run build --prefix octofit-tracker/frontend`
+- **Data-tier command**: `npm run test:data --prefix octofit-tracker/backend`
+  - Current: 1/5 passed. Models missing schema validation for required fields (name, email, fitnessGoal on User; name, mascot on Team; type, user, team on Activity; focus, minutes, difficulty on Workout)
+  - Expected: All 5 passed when models have proper Mongoose validation
+
+- **API command**: `npm run test:api --prefix octofit-tracker/backend`
+  - Current: 0/4 passed. Routes return 501 (not implemented), leaderboard empty, suggestions missing reason
+  - Expected: All 4 passed when routes validate input (return 400 for invalid refs, 404 for missing users), services compute points/leaderboard/suggestions
+
+- **Frontend command**: `npm test --prefix octofit-tracker/frontend`
+  - Current: 0/15 passed. UI can't find activity data because API not implemented
+  - Expected: All 15 passed when frontend fetches and renders activity feeds, leaderboard, and team info
+
+- **Backend build command**: `npm run build --prefix octofit-tracker/backend`
+  - Verifies TypeScript compilation and no syntax errors
+
+- **Frontend build command**: `npm run build --prefix octofit-tracker/frontend`
+  - Verifies Vite bundling and no missing dependencies
