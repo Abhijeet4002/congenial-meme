@@ -102,6 +102,11 @@ export async function createTeam(input: unknown) {
     name,
     mascot: mascot || '',
     members: (members && Array.isArray(members)) ? members : [],
+  }).catch((error: unknown) => {
+    if (error instanceof mongoose.Error.ValidationError || error instanceof mongoose.Error.CastError) {
+      throw Object.assign(error, { status: 400 });
+    }
+    throw error;
   });
 
   return team.toObject();
