@@ -13,7 +13,7 @@ export async function createActivity(input: unknown) {
   const { userId, teamId, type, minutes } = input as Record<string, unknown>;
 
   // Validate required fields
-  if (!userId || !teamId || !type || minutes === undefined) {
+  if (!userId || !teamId || typeof type !== 'string' || !type.trim() || minutes === undefined) {
     throw Object.assign(new Error('Missing required fields: userId, teamId, type, minutes'), { status: 400 });
   }
 
@@ -38,8 +38,12 @@ export async function createActivity(input: unknown) {
   }
 
   // Compute points based on activity type
-  const minutesNum = typeof minutes === 'number' ? minutes : parseInt(minutes as string, 10);
-  if (isNaN(minutesNum) || minutesNum <= 0) {
+  const minutesNum = typeof minutes === 'number'
+    ? minutes
+    : typeof minutes === 'string' && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(minutes.trim())
+      ? Number(minutes)
+      : Number.NaN;
+  if (!Number.isFinite(minutesNum) || minutesNum <= 0) {
     throw Object.assign(new Error('Minutes must be a positive number'), { status: 400 });
   }
 
@@ -96,34 +100,32 @@ export async function createTeam(input: unknown) {
   }
 
   // Create team with optional members
-  const team = await Team.create({
-    name,
-    mascot: mascot || '',
-    members: (members && Array.isArray(members)) ? members : [],
-  });
+  try {
+    const team = await Team.create({
+      name,
+      mascot: mascot || '',
+      members: (members && Array.isArray(members)) ? members : [],
+    });
 
-  return team.toObject();
+    return team.toObject();
+  } catch (error) {
+    if (error instanceof mongoose.Error.ValidationError || error instanceof mongoose.Error.CastError) {
+      throw Object.assign(new Error('Invalid team data'), { status: 400 });
+    }
+    throw error;
+  }
 }
 
 export async function getLeaderboard() {
-  // Get all teams with their activities
   const teams = await Team.find().lean();
-  
-  // Calculate total points for each team
-  const teamPoints = await Promise.all(
-    teams.map(async (team) => {
-      const totalPoints = await Activity.aggregate([
-        { $match: { team: team._id } },
-        { $group: { _id: null, total: { $sum: '$points' } } },
-      ]);
-      
-      return {
-        teamId: team._id,
-        teamName: team.name,
-        totalPoints: totalPoints[0]?.total ?? 0,
-      };
-    })
-  );
+  const aggregatedPoints = await Activity.aggregate([
+    { $group: { _id: '$team', total: { $sum: '$points' } } },
+  ]);
+  const pointsByTeam = new Map(aggregatedPoints.map(({ _id, total }) => [_id.toString(), total]));
+  const teamPoints = teams.map((team) => ({
+    teamName: team.name,
+    totalPoints: pointsByTeam.get(team._id.toString()) ?? 0,
+  }));
 
   // Sort by total points descending
   const sorted = teamPoints.sort((a, b) => b.totalPoints - a.totalPoints);
@@ -137,11 +139,8 @@ export async function getLeaderboard() {
 }
 
 export async function suggestWorkouts(userEmail: string) {
-  // Decode URL-encoded email
-  const decodedEmail = decodeURIComponent(userEmail);
-
   // Find user by email
-  const user = await User.findOne({ email: decodedEmail }).lean();
+  const user = await User.findOne({ email: userEmail }).lean();
   if (!user) {
     throw Object.assign(new Error('User not found'), { status: 404 });
   }
@@ -169,12 +168,15 @@ export async function suggestWorkouts(userEmail: string) {
   const workouts = await Workout.find({ focus: suggestedFocus }).lean();
 
   // If no workouts for that focus, get any workouts
-  const availableWorkouts = workouts.length > 0 ? workouts : await Workout.find().lean();
+  const hasMatchingWorkouts = workouts.length > 0;
+  const availableWorkouts = hasMatchingWorkouts ? workouts : await Workout.find().lean();
 
   // Add reason explaining the recommendation
   return availableWorkouts.map((workout) => ({
     ...workout,
-    reason: `Based on your ${suggestedFocus} activities and goals, this ${suggestedFocus} workout aligns with your activity pattern.`,
+    reason: hasMatchingWorkouts
+      ? `Based on your ${suggestedFocus} activities and goals, this ${workout.focus} workout aligns with your activity pattern.`
+      : `No ${suggestedFocus} workouts are available, so this ${workout.focus} workout is suggested instead.`,
   }));
 }
 
