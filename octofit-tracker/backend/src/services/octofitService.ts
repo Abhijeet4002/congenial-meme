@@ -141,11 +141,8 @@ export async function getLeaderboard() {
 }
 
 export async function suggestWorkouts(userEmail: string) {
-  // Decode URL-encoded email
-  const decodedEmail = decodeURIComponent(userEmail);
-
-  // Find user by email
-  const user = await User.findOne({ email: decodedEmail }).lean();
+  // Express has already URL-decoded the route parameter.
+  const user = await User.findOne({ email: userEmail }).lean();
   if (!user) {
     throw Object.assign(new Error('User not found'), { status: 404 });
   }
