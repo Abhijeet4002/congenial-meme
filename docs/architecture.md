@@ -30,13 +30,13 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 ✅ **Completed plan locked in. Priority order: data models → API routes → frontend components.**
 
-- **Presentation tier decision**: React 19 components fetch from `/api/*` routes. Vite proxies to localhost:8000. Components render activity feeds and leaderboard tables with Bootstrap styling.
-- **Logic tier decision**: Express routes handle validation (return 400/404 for invalid input, never 500 from cast errors). Services compute derived data (e.g., leaderboard rankings, suggestion reasons). Mongoose handles schema validation.
-- **Data tier decision**: Mongoose models with strict validation. User requires name, email, fitnessGoal. Team requires name, mascot, members array. Activity requires type, user ref, team ref, minutes; computes points and occurredAt. Workout defines suggestion templates with focus, title, minutes, difficulty.
-- **Activity tracking approach**: POST /api/activities validates both userId and teamId as valid ObjectIds, looks them up, rejects with 400 if invalid, computes points based on type (cardio=5pt/min, strength=4pt/min), stores occurredAt as now().
-- **Team management approach**: POST /api/teams requires name, rejects with 400 if missing, accepts mascot and optional members array, returns 201 on creation.
-- **Leaderboard approach**: GET /api/leaderboard queries all teams, sums their activities' points, sorts descending, adds 1-based rank, returns in { leaderboard: [...] } format.
-- **Workout suggestions approach**: GET /api/workouts/suggestions/:userEmail finds user by email (404 if not found), analyzes recent activity types, recommends matching workout with focus and reason explaining the recommendation logic.
+- Presentation tier decision: React 19 components fetch from `/api/*` routes. Vite proxies to localhost:8000. Components render activity feeds and leaderboard tables with Bootstrap styling.
+- Logic tier decision: Express routes handle validation (return 400/404 for invalid input, never 500 from cast errors). Services compute derived data (e.g., leaderboard rankings, suggestion reasons). Mongoose handles schema validation.
+- Data tier decision: Mongoose models with strict validation. User requires name, email, fitnessGoal. Team requires name, mascot, members array. Activity requires type, user ref, team ref, minutes; computes points and occurredAt. Workout defines suggestion templates with focus, title, minutes, difficulty.
+- Activity tracking approach: POST /api/activities validates both userId and teamId as valid ObjectIds, looks them up, rejects with 400 if invalid, computes points based on type (cardio=5pt/min, strength=4pt/min), stores occurredAt as now().
+- Team management approach: POST /api/teams requires name, rejects with 400 if missing, accepts mascot and optional members array, returns 201 on creation.
+- Leaderboard approach: GET /api/leaderboard queries all teams, sums their activities' points, sorts descending, adds 1-based rank, returns in { leaderboard: [...] } format.
+- Workout suggestions approach: GET /api/workouts/suggestions/:userEmail finds user by email (404 if not found), analyzes recent activity types, recommends matching workout with focus and reason explaining the recommendation logic.
 
 ## Test plan
 
