@@ -18,21 +18,24 @@ export async function createActivity(input: unknown) {
   }
 
   // Validate ObjectId format
-  if (!mongoose.Types.ObjectId.isValid(userId as string)) {
+  if (typeof userId !== 'string' || !mongoose.Types.ObjectId.isValid(userId)) {
     throw Object.assign(new Error('Invalid userId format'), { status: 400 });
   }
-  if (!mongoose.Types.ObjectId.isValid(teamId as string)) {
+  if (typeof teamId !== 'string' || !mongoose.Types.ObjectId.isValid(teamId)) {
     throw Object.assign(new Error('Invalid teamId format'), { status: 400 });
   }
 
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const teamObjectId = new mongoose.Types.ObjectId(teamId);
+
   // Check if user exists
-  const user = await User.findById(userId);
+  const user = await User.findById(userObjectId);
   if (!user) {
     throw Object.assign(new Error('User not found'), { status: 404 });
   }
 
   // Check if team exists
-  const team = await Team.findById(teamId);
+  const team = await Team.findById(teamObjectId);
   if (!team) {
     throw Object.assign(new Error('Team not found'), { status: 404 });
   }
@@ -40,9 +43,7 @@ export async function createActivity(input: unknown) {
   // Compute points based on activity type
   const minutesNum = typeof minutes === 'number'
     ? minutes
-    : typeof minutes === 'string' && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(minutes.trim())
-      ? Number(minutes)
-      : Number.NaN;
+    : typeof minutes === 'string' && minutes.trim() !== '' ? Number(minutes) : Number.NaN;
   if (!Number.isFinite(minutesNum) || minutesNum <= 0) {
     throw Object.assign(new Error('Minutes must be a positive number'), { status: 400 });
   }
