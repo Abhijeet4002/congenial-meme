@@ -1,27 +1,186 @@
 import { Activity, Team, User, Workout } from '../models/index.js';
+import mongoose from 'mongoose';
 
 export async function listActivities() {
   return Activity.find().lean();
 }
 
-export async function createActivity(_input: unknown) {
-  throw Object.assign(new Error('Activity validation is not implemented yet'), { status: 501 });
+export async function createActivity(input: unknown) {
+  if (!input || typeof input !== 'object') {
+    throw Object.assign(new Error('Invalid activity data'), { status: 400 });
+  }
+
+  const { userId, teamId, type, minutes } = input as Record<string, unknown>;
+
+  // Validate required fields
+  if (!userId || !teamId || typeof type !== 'string' || !type.trim() || minutes === undefined) {
+    throw Object.assign(new Error('Missing required fields: userId, teamId, type, minutes'), { status: 400 });
+  }
+
+  // Validate ObjectId format
+  if (typeof userId !== 'string' || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw Object.assign(new Error('Invalid userId format'), { status: 400 });
+  }
+  if (typeof teamId !== 'string' || !mongoose.Types.ObjectId.isValid(teamId)) {
+    throw Object.assign(new Error('Invalid teamId format'), { status: 400 });
+  }
+
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const teamObjectId = new mongoose.Types.ObjectId(teamId);
+
+  // Check if user exists
+  const user = await User.findById(userObjectId);
+  if (!user) {
+    throw Object.assign(new Error('User not found'), { status: 404 });
+  }
+
+  // Check if team exists
+  const team = await Team.findById(teamObjectId);
+  if (!team) {
+    throw Object.assign(new Error('Team not found'), { status: 404 });
+  }
+
+  // Compute points based on activity type
+  const minutesNum = typeof minutes === 'number'
+    ? minutes
+    : typeof minutes === 'string' && minutes.trim() !== '' ? Number(minutes) : Number.NaN;
+  if (!Number.isFinite(minutesNum) || minutesNum <= 0) {
+    throw Object.assign(new Error('Minutes must be a positive number'), { status: 400 });
+  }
+
+  let points: number;
+  switch (type) {
+    case 'cardio':
+      points = minutesNum * 5;
+      break;
+    case 'strength':
+      points = minutesNum * 4;
+      break;
+    case 'run':
+    case 'cycle':
+    case 'walk':
+      points = minutesNum; // 1 point per minute for general activities
+      break;
+    default:
+      points = minutesNum; // Default: 1 point per minute
+  }
+
+  // Create activity with computed fields
+  const activity = await Activity.create({
+    user: userId,
+    team: teamId,
+    type,
+    minutes: minutesNum,
+    points,
+    occurredAt: new Date(),
+  });
+
+  return activity.toObject();
 }
 
 export async function listTeams() {
-  return Team.find().lean();
+  const teams = await Team.find().populate('members').lean();
+  
+  // Serialize members to strings
+  return teams.map((team) => ({
+    ...team,
+    members: team.members.map((member: any) => member._id?.toString() || member.toString()),
+  }));
 }
 
-export async function createTeam(_input: unknown) {
-  throw Object.assign(new Error('Team validation is not implemented yet'), { status: 501 });
+export async function createTeam(input: unknown) {
+  if (!input || typeof input !== 'object') {
+    throw Object.assign(new Error('Invalid team data'), { status: 400 });
+  }
+
+  const { name, mascot, members } = input as Record<string, unknown>;
+
+  // Validate required fields
+  if (!name) {
+    throw Object.assign(new Error('Missing required field: name'), { status: 400 });
+  }
+
+  // Create team with optional members
+  try {
+    const team = await Team.create({
+      name,
+      mascot: mascot || '',
+      members: (members && Array.isArray(members)) ? members : [],
+    });
+
+    return team.toObject();
+  } catch (error) {
+    if (error instanceof mongoose.Error.ValidationError || error instanceof mongoose.Error.CastError) {
+      throw Object.assign(new Error('Invalid team data'), { status: 400 });
+    }
+    throw error;
+  }
 }
 
 export async function getLeaderboard() {
-  return [];
+  const teams = await Team.find().lean();
+  const aggregatedPoints = await Activity.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
+    { $group: { _id: '$team', total: { $sum: '$points' } } },
+  ]);
+  const pointsByTeam = new Map<string, number>(
+    aggregatedPoints.map(({ _id, total }) => [String(_id), total])
+  );
+  const teamPoints = teams.map((team) => ({
+    teamName: team.name,
+    totalPoints: pointsByTeam.get(team._id.toString()) ?? 0,
+  }));
+
+  // Sort by total points descending
+  const sorted = teamPoints.sort((a, b) => b.totalPoints - a.totalPoints);
+
+  // Add 1-based rank
+  return sorted.map((entry, index) => ({
+    teamName: entry.teamName,
+    totalPoints: entry.totalPoints,
+    rank: index + 1,
+  }));
 }
 
-export async function suggestWorkouts(_userEmail: string) {
-  return Workout.find().limit(1).lean();
+export async function suggestWorkouts(userEmail: string) {
+  // Express has already URL-decoded the route parameter.
+  const user = await User.findOne({ email: userEmail }).lean();
+  if (!user) {
+    throw Object.assign(new Error('User not found'), { status: 404 });
+  }
+
+  // Get user's recent activities to identify patterns
+  const recentActivities = await Activity.find({ user: user._id })
+    .sort({ occurredAt: -1 })
+    .limit(10)
+    .lean();
+
+  // Determine activity focus based on recent activities
+  const activityTypes = recentActivities.map((a) => a.type);
+  let suggestedFocus = user.fitnessGoal || 'general';
+
+  // If user has recent activities, use those to inform suggestions
+  if (activityTypes.length > 0) {
+    if (activityTypes.some((t) => t === 'run' || t === 'cycle')) {
+      suggestedFocus = 'endurance';
+    } else if (activityTypes.some((t) => t === 'strength')) {
+      suggestedFocus = 'strength';
+    }
+  }
+
+  // Find workouts matching the suggested focus
+  const workouts = await Workout.find({ focus: suggestedFocus }).lean();
+
+  // If no workouts for that focus, get any workouts
+  const hasMatchingWorkouts = workouts.length > 0;
+  const availableWorkouts = hasMatchingWorkouts ? workouts : await Workout.find().lean();
+
+  // Add reason explaining the recommendation
+  return availableWorkouts.map((workout) => ({
+    ...workout,
+    reason: hasMatchingWorkouts
+      ? `Based on your ${suggestedFocus} activities and goals, this ${workout.focus} workout aligns with your activity pattern.`
+      : `No ${suggestedFocus} workouts are available, so this ${workout.focus} workout is suggested instead.`,
+  }));
 }
 
 export { User };

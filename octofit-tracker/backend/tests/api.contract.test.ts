@@ -32,6 +32,27 @@ describe('OctoFit API contract', () => {
     const { user, team } = await createUserAndTeam('Mona', 'mona@example.com', 'Mona');
     const invalid = await request(app).post('/api/activities').send({});
     expect(invalid.status).toBe(400);
+    for (const invalidInput of [
+      { type: {}, minutes: 30 },
+      { type: 'run', minutes: '30junk' },
+      { type: 'run', minutes: [30, 60] },
+      { type: 'run', minutes: '1e9999' },
+    ]) {
+      const response = await request(app).post('/api/activities').send({
+        userId: user._id.toString(),
+        teamId: team._id.toString(),
+        ...invalidInput,
+      });
+      expect(response.status).toBe(400);
+    }
+    const decimalMinutes = await request(app).post('/api/activities').send({
+      userId: user._id.toString(),
+      teamId: team._id.toString(),
+      type: 'run',
+      minutes: '1.5',
+    });
+    expect(decimalMinutes.status).toBe(201);
+    expect(decimalMinutes.body.activity.minutes).toBe(1.5);
     const missingReferences = await request(app).post('/api/activities').send({ userId: new mongoose.Types.ObjectId().toString(), teamId: new mongoose.Types.ObjectId().toString(), type: 'run', minutes: 30 });
     expect(missingReferences.status).toBeGreaterThanOrEqual(400);
     expect(missingReferences.status).toBeLessThan(500);
@@ -55,6 +76,13 @@ describe('OctoFit API contract', () => {
     const member = await User.create({ name: 'Mona', email: 'mona@example.com', fitnessGoal: 'endurance' });
     const invalid = await request(app).post('/api/teams').send({ mascot: 'Mona' });
     expect(invalid.status).toBe(400);
+    for (const invalidTeam of [
+      { name: 'Octocats' },
+      { name: 'Octocats', mascot: 'Mona', members: ['not-an-id'] },
+    ]) {
+      const response = await request(app).post('/api/teams').send(invalidTeam);
+      expect(response.status).toBe(400);
+    }
     const created = await request(app).post('/api/teams').send({ name: 'Octocats', mascot: 'Mona', members: [member._id.toString()] });
     expect(created.status).toBe(201);
     expect(created.body.team).toMatchObject({ name: 'Octocats', mascot: 'Mona' });
@@ -66,6 +94,7 @@ describe('OctoFit API contract', () => {
   it('orders leaderboard entries by total points', async () => {
     const mona = await createUserAndTeam('Mona', 'mona@example.com', 'Mona', 'Octocats');
     const hubot = await createUserAndTeam('Hubot', 'hubot@example.com', 'Hubot', 'Robocats');
+    await createUserAndTeam('No activity', 'no-activity@example.com', 'N/A', 'Zero team');
     await Activity.create([
       { user: mona.user._id, team: mona.team._id, type: 'run', minutes: 25, points: 25, occurredAt: new Date() },
       { user: hubot.user._id, team: hubot.team._id, type: 'cycle', minutes: 20, points: 20, occurredAt: new Date() },
@@ -76,6 +105,7 @@ describe('OctoFit API contract', () => {
     expect(response.body.leaderboard.map(({ teamName, totalPoints, rank }: { teamName: string; totalPoints: number; rank: number }) => ({ teamName, totalPoints, rank }))).toEqual([
       { teamName: 'Robocats', totalPoints: 35, rank: 1 },
       { teamName: 'Octocats', totalPoints: 25, rank: 2 },
+      { teamName: 'Zero team', totalPoints: 0, rank: 3 },
     ]);
   });
   it('suggests workouts that match each user activity pattern', async () => {
@@ -102,5 +132,14 @@ describe('OctoFit API contract', () => {
     const unknownResponse = await request(app).get('/api/workouts/suggestions/nobody%40example.com');
     expect(unknownResponse.status).toBeGreaterThanOrEqual(400);
     expect(unknownResponse.status).toBeLessThan(500);
+
+    await User.updateOne({ _id: mona.user._id }, { $set: { email: 'mona%fit@example.com', fitnessGoal: 'mobility' } });
+    await Activity.deleteMany({ user: mona.user._id });
+    const fallbackResponse = await request(app).get('/api/workouts/suggestions/mona%25fit%40example.com');
+    expect(fallbackResponse.status).toBe(200);
+    expect(fallbackResponse.body.suggestions[0]).toMatchObject({
+      focus: 'endurance',
+      reason: expect.stringMatching(/no mobility workouts are available.*endurance workout/i),
+    });
   });
 });
