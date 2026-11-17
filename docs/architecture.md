@@ -28,7 +28,7 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 ## Implementation decisions
 
-Record your plan here before editing code.
+✅ **Completed plan locked in. Priority order: data models → API routes → frontend components.**
 
 - **Presentation tier decision**: React 19 components fetch from `/api/*` routes. Vite proxies to localhost:8000. Components render activity feeds and leaderboard tables with Bootstrap styling.
 - **Logic tier decision**: Express routes handle validation (return 400/404 for invalid input, never 500 from cast errors). Services compute derived data (e.g., leaderboard rankings, suggestion reasons). Mongoose handles schema validation.
@@ -40,19 +40,28 @@ Record your plan here before editing code.
 
 ## Test plan
 
-Record the commands you run and what each failure means.
+✅ **Baseline captured. All commands verified with MongoDB running on port 27017.**
 
 - **Data-tier command**: `npm run test:data --prefix octofit-tracker/backend`
-  - Current: 1/5 passed. Models missing schema validation for required fields (name, email, fitnessGoal on User; name, mascot on Team; type, user, team on Activity; focus, minutes, difficulty on Workout)
-  - Expected: All 5 passed when models have proper Mongoose validation
+  - **Red baseline**: 1/5 passed. Test failures:
+    - `requires meaningful user identity and goals` — expects User validation errors for name, email, fitnessGoal (currently undefined)
+    - `requires teams to have a name, mascot, and members array` — expects Team validation errors for name, mascot (currently undefined)
+    - `requires activities to connect users, teams, types, minutes, points, and dates` — expects Activity validation errors for type, user, team, minutes (currently undefined)
+    - `defines workout suggestions with focus, duration, and difficulty` — expects Workout validation errors for focus, minutes, difficulty (currently undefined)
+    - `seeds representative data for all four capabilities idempotently` — ✅ PASSING
+  - **Green goal**: 5/5 passed when models add required field validation (Mongoose schema)
 
 - **API command**: `npm run test:api --prefix octofit-tracker/backend`
-  - Current: 0/4 passed. Routes return 501 (not implemented), leaderboard empty, suggestions missing reason
-  - Expected: All 4 passed when routes validate input (return 400 for invalid refs, 404 for missing users), services compute points/leaderboard/suggestions
+  - **Red baseline**: 0/4 passed. Test failures:
+    - `creates and lists valid activities while rejecting invalid input` — routes return 501 (not implemented), expect 400 for invalid userId/teamId
+    - `creates teams and exposes members` — routes return 501, expect 400 for missing name and 201 on creation
+    - `orders leaderboard entries by total points` — GET /api/leaderboard returns empty array [], expect ranked teams by total points descending
+    - `suggests workouts that match each user activity pattern` — suggestions missing reason field explaining the recommendation
+  - **Green goal**: 4/4 passed when routes implement validation, services compute points/leaderboard/suggestions with reason
 
 - **Frontend command**: `npm test --prefix octofit-tracker/frontend`
-  - Current: 0/15 passed. UI can't find activity data because API not implemented
-  - Expected: All 15 passed when frontend fetches and renders activity feeds, leaderboard, and team info
+  - **Red baseline**: 0/15 passed. UI renders navigation and "Implementation pending" messages; can't find activity data because `/api/activities` returns 501
+  - **Green goal**: 15/15 passed when components fetch and render activity feeds, leaderboard tables, team info
 
 - **Backend build command**: `npm run build --prefix octofit-tracker/backend`
   - Verifies TypeScript compilation and no syntax errors
