@@ -118,10 +118,12 @@ export async function createTeam(input: unknown) {
 
 export async function getLeaderboard() {
   const teams = await Team.find().lean();
-  const aggregatedPoints = await Activity.aggregate([
+  const aggregatedPoints = await Activity.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
     { $group: { _id: '$team', total: { $sum: '$points' } } },
   ]);
-  const pointsByTeam = new Map(aggregatedPoints.map(({ _id, total }) => [_id.toString(), total]));
+  const pointsByTeam = new Map<string, number>(
+    aggregatedPoints.map(({ _id, total }) => [String(_id), total])
+  );
   const teamPoints = teams.map((team) => ({
     teamName: team.name,
     totalPoints: pointsByTeam.get(team._id.toString()) ?? 0,
@@ -139,7 +141,7 @@ export async function getLeaderboard() {
 }
 
 export async function suggestWorkouts(userEmail: string) {
-  // Find user by email
+  // Express has already URL-decoded the route parameter.
   const user = await User.findOne({ email: userEmail }).lean();
   if (!user) {
     throw Object.assign(new Error('User not found'), { status: 404 });
