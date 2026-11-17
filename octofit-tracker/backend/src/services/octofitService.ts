@@ -13,7 +13,7 @@ export async function createActivity(input: unknown) {
   const { userId, teamId, type, minutes } = input as Record<string, unknown>;
 
   // Validate required fields
-  if (!userId || !teamId || !type || minutes === undefined) {
+  if (!userId || !teamId || typeof type !== 'string' || !type.trim() || minutes === undefined) {
     throw Object.assign(new Error('Missing required fields: userId, teamId, type, minutes'), { status: 400 });
   }
 
