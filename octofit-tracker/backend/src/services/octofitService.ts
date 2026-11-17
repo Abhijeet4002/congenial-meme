@@ -38,8 +38,10 @@ export async function createActivity(input: unknown) {
   }
 
   // Compute points based on activity type
-  const minutesNum = typeof minutes === 'number' ? minutes : parseInt(minutes as string, 10);
-  if (isNaN(minutesNum) || minutesNum <= 0) {
+  const minutesNum = typeof minutes === 'number'
+    ? minutes
+    : typeof minutes === 'string' && minutes.trim() !== '' ? Number(minutes) : NaN;
+  if (!Number.isFinite(minutesNum) || minutesNum <= 0) {
     throw Object.assign(new Error('Minutes must be a positive number'), { status: 400 });
   }
 
