@@ -116,21 +116,18 @@ export async function getLeaderboard() {
   // Get all teams with their activities
   const teams = await Team.find().lean();
   
-  // Calculate total points for each team
-  const teamPoints = await Promise.all(
-    teams.map(async (team) => {
-      const totalPoints = await Activity.aggregate([
-        { $match: { team: team._id } },
-        { $group: { _id: null, total: { $sum: '$points' } } },
-      ]);
-      
-      return {
-        teamId: team._id,
-        teamName: team.name,
-        totalPoints: totalPoints[0]?.total ?? 0,
-      };
-    })
+  // Aggregate activity totals once, then include teams with no activities.
+  const totals = await Activity.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
+    { $group: { _id: '$team', total: { $sum: '$points' } } },
+  ]);
+  const totalsByTeam = new Map<string, number>(
+    totals.map((entry) => [String(entry._id), entry.total])
   );
+  const teamPoints = teams.map((team) => ({
+    teamId: team._id,
+    teamName: team.name,
+    totalPoints: totalsByTeam.get(team._id.toString()) ?? 0,
+  }));
 
   // Sort by total points descending
   const sorted = teamPoints.sort((a, b) => b.totalPoints - a.totalPoints);
